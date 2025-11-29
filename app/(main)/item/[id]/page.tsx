@@ -3,7 +3,7 @@
 import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Avatar, AvatarFallback, Textarea } from "@/components/ui";
-import { ArrowLeft, Star, Shield, Clock, MapPin, MessageCircle, AlertTriangle, Zap, CheckCircle } from "lucide-react";
+import { ArrowLeft, Star, Shield, Clock, MessageCircle, Zap, CheckCircle } from "lucide-react";
 
 interface ItemDetails {
   id: string;
@@ -307,19 +307,19 @@ export default function ItemPage({ params }: { params: Promise<{ id: string }> }
                 <ul className="space-y-2 text-sm text-gray-600">
                   <li className="flex items-start">
                     <CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                    Deal only with verified student profiles
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                    Keep chats and communication inside the app
+                  </li>
+                  <li className="flex items-start">
+                    <CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
                     Meet in public, well-lit campus locations
                   </li>
                   <li className="flex items-start">
                     <CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
-                    Use escrow payment for protection
-                  </li>
-                  <li className="flex items-start">
-                    <CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
                     Inspect item before confirming receipt
-                  </li>
-                  <li className="flex items-start">
-                    <AlertTriangle className="h-4 w-4 text-yellow-500 mr-2 mt-0.5 flex-shrink-0" />
-                    Never pay outside the platform
                   </li>
                 </ul>
               </CardContent>

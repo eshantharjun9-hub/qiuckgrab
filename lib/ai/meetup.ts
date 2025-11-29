@@ -135,11 +135,12 @@ function generateFallbackLocations(
 
 function getDefaultSafetyTips(): string[] {
   return [
+    "Deal only with verified student profiles",
+    "Keep chats and communication inside the app",
     "Meet during daylight hours when possible",
     "Choose a public, well-lit location",
     "Inform a friend of your meetup time and location",
     "Inspect the item before completing the transaction",
-    "Use the in-app payment system for escrow protection",
     "Trust your instincts - if something feels off, cancel",
   ];
 }

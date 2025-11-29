@@ -147,7 +147,7 @@ export default function LandingPage() {
             <Step number={1} title="Sign Up & Verify" description="Register with your college email and verify your student ID." />
             <Step number={2} title="Search or List" description="Find items with AI search or list your own for sale." />
             <Step number={3} title="Chat & Meet" description="Connect with verified students and meet safely on campus." />
-            <Step number={4} title="Pay & Rate" description="Secure escrow payment and build your trust score." />
+            <Step number={4} title="Complete & Rate" description="Finalize your transaction and build your trust score." />
           </div>
         </div>
       </section>
