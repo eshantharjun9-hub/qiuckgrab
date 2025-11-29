@@ -46,7 +46,12 @@ export default function HomePage() {
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
-        setCurrentUser(user);
+        // Validate user object has required fields
+        if (user && typeof user.id === "string" && typeof user.name === "string") {
+          setCurrentUser(user);
+        } else {
+          setCurrentUser(null);
+        }
       } catch {
         // Invalid JSON in localStorage
         setCurrentUser(null);
