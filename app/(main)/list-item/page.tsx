@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, Textarea, FileUpload } from "@/components/ui";
 import { ArrowLeft, Zap, IndianRupee, Tag } from "lucide-react";
@@ -28,7 +28,6 @@ const CONDITIONS = [
 export default function ListItemPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     category: "",
@@ -37,6 +36,21 @@ export default function ListItemPage() {
     condition: "GOOD",
     photo: "",
   });
+
+  // Handle file selection and convert to data URL
+  const handleFileSelect = useCallback((file: File | null) => {
+    if (!file) {
+      setFormData((prev) => ({ ...prev, photo: "" }));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      setFormData((prev) => ({ ...prev, photo: dataUrl }));
+    };
+    reader.readAsDataURL(file);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,7 +222,7 @@ export default function ListItemPage() {
                 <FileUpload
                   accept="image/*"
                   maxSize={10}
-                  onFileSelect={setPhotoFile}
+                  onFileSelect={handleFileSelect}
                   placeholder="Click to upload or drag and drop"
                   hint="PNG, JPG up to 10MB"
                 />

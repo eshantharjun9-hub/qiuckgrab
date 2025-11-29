@@ -23,6 +23,24 @@ export const verifyIdSchema = z.object({
   idPhotoUrl: z.string().url("Invalid photo URL"),
 });
 
+// Custom validator for URLs or data URLs
+const urlOrDataUrl = z.string().refine(
+  (val) => {
+    // Accept data URLs (base64 encoded images)
+    if (val.startsWith("data:")) {
+      return true;
+    }
+    // Accept regular URLs
+    try {
+      new URL(val);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: "Must be a valid URL or data URL" }
+);
+
 // Item validators
 export const createItemSchema = z.object({
   name: z.string().min(2, "Item name must be at least 2 characters"),
@@ -30,8 +48,8 @@ export const createItemSchema = z.object({
   description: z.string().optional(),
   price: z.number().positive("Price must be positive"),
   condition: z.enum(["NEW", "LIKE_NEW", "GOOD", "FAIR", "POOR"]).default("GOOD"),
-  photo: z.string().url().optional(),
-  photos: z.array(z.string().url()).optional(),
+  photo: urlOrDataUrl.optional(),
+  photos: z.array(urlOrDataUrl).optional(),
 });
 
 export const updateItemSchema = createItemSchema.partial();
