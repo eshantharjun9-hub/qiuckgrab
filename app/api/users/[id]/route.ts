@@ -79,8 +79,8 @@ export async function GET(
 
     // Return user with embedded ratings and items (no redundant top-level fields)
     return NextResponse.json({ user });
-  } catch (error) {
-    console.error("Error fetching user profile:", error instanceof Error ? error.message : "Unknown error");
+  } catch {
+    console.error("Error fetching user profile");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
