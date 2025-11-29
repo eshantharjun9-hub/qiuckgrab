@@ -49,6 +49,9 @@ export default function ListItemPage() {
       const dataUrl = e.target?.result as string;
       setFormData((prev) => ({ ...prev, photo: dataUrl }));
     };
+    reader.onerror = () => {
+      setError("Failed to read the image file. Please try again.");
+    };
     reader.readAsDataURL(file);
   }, []);
 

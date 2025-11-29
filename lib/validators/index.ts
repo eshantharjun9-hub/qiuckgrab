@@ -23,11 +23,11 @@ export const verifyIdSchema = z.object({
   idPhotoUrl: z.string().url("Invalid photo URL"),
 });
 
-// Custom validator for URLs or data URLs
+// Custom validator for URLs or image data URLs
 const urlOrDataUrl = z.string().refine(
   (val) => {
-    // Accept data URLs (base64 encoded images)
-    if (val.startsWith("data:")) {
+    // Accept image data URLs (base64 encoded images)
+    if (val.startsWith("data:image/")) {
       return true;
     }
     // Accept regular URLs
@@ -38,7 +38,7 @@ const urlOrDataUrl = z.string().refine(
       return false;
     }
   },
-  { message: "Must be a valid URL or data URL" }
+  { message: "Must be a valid URL or image data URL" }
 );
 
 // Item validators
