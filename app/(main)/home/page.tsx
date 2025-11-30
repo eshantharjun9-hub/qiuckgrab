@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Input, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel, Avatar, AvatarFallback } from "@/components/ui";
+import { Button, Input, Badge, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel, Avatar, AvatarFallback } from "@/components/ui";
 import { ItemCardSkeleton } from "@/components/ui/item-card-skeleton";
-import { ItemCard, type Item } from "@/components/item-card";
-import { Search, Zap, Filter, Mic, User, LogOut } from "lucide-react";
+import { type Item } from "@/components/item-card";
+import { Search, Zap, Filter, Mic, User, LogOut, MapPin, Share2, ShoppingBag, Package, HelpCircle, Plus } from "lucide-react";
 
 interface AuthUser {
   id: string;
@@ -15,6 +15,13 @@ interface AuthUser {
   photo: string | null;
 }
 
+type TabType = "marketplace" | "campus-relay" | "lost-found";
+
+const TABS: { id: TabType; label: string; icon: React.ReactNode; description: string }[] = [
+  { id: "marketplace", label: "Marketplace", icon: <ShoppingBag className="h-5 w-5" />, description: "Buy and sell items with verified students" },
+  { id: "campus-relay", label: "Campus Relay", icon: <Zap className="h-5 w-5" />, description: "Get items delivered by fellow students" },
+  { id: "lost-found", label: "Lost & Found", icon: <HelpCircle className="h-5 w-5" />, description: "Report or find lost items on campus" },
+];
 
 export default function HomePage() {
   const router = useRouter();
@@ -27,6 +34,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>("marketplace");
   const observerTarget = useRef<HTMLDivElement>(null);
   const isSearchMode = useRef(false);
 
@@ -242,39 +250,30 @@ export default function HomePage() {
     recognition.start();
   };
 
-  const getPriceRatingColor = useCallback((rating: string) => {
-    switch (rating) {
-      case "Great Deal":
-        return "success";
-      case "Fair":
-        return "secondary";
-      case "Overpriced":
-        return "destructive";
-      default:
-        return "secondary";
-    }
-  }, []);
+  const activeTabData = TABS.find(tab => tab.id === activeTab);
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between">
             <Link href="/home" className="flex items-center space-x-2">
-              <Zap className="h-8 w-8 text-blue-600" />
-              <span className="text-2xl font-bold">QuickGrab</span>
+              <div className="bg-orange-600 p-2 rounded-lg">
+                <Zap className="h-6 w-6 text-white" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-xl font-bold text-gray-900">QuickGrab</span>
+                <span className="text-xs text-gray-500">Campus Marketplace</span>
+              </div>
             </Link>
             <div className="flex items-center space-x-4">
-              <Link href="/list-item">
-                <Button>List Item</Button>
-              </Link>
               {currentUser ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full">
+                    <button className="focus:outline-none focus:ring-2 focus:ring-orange-500 rounded-full">
                       <Avatar>
-                        <AvatarFallback>{currentUser.name?.charAt(0) || "U"}</AvatarFallback>
+                        <AvatarFallback className="bg-orange-100 text-orange-600">{currentUser.name?.charAt(0) || "U"}</AvatarFallback>
                       </Avatar>
                     </button>
                   </DropdownMenuTrigger>
@@ -302,48 +301,89 @@ export default function HomePage() {
               ) : (
                 <Link href="/signin">
                   <Avatar>
-                    <AvatarFallback>U</AvatarFallback>
+                    <AvatarFallback className="bg-orange-100 text-orange-600">U</AvatarFallback>
                   </Avatar>
                 </Link>
               )}
             </div>
           </div>
-
-          {/* Search Bar */}
-          <form onSubmit={handleSearch} className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-              <Input
-                placeholder="Search for items... (e.g., 'need iPhone charger urgent')"
-                className="pl-10 pr-12"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={startVoiceSearch}
-                className={`absolute right-3 top-2.5 p-1 rounded-full ${
-                  isListening ? "bg-red-100 text-red-600" : "text-gray-400 hover:text-gray-600"
-                }`}
-              >
-                <Mic className="h-5 w-5" />
-              </button>
-            </div>
-            <Button type="submit" disabled={loading}>
-              <Search className="h-4 w-4 mr-2" />
-              Search
-            </Button>
-            <Button type="button" variant="outline">
-              <Filter className="h-4 w-4" />
-            </Button>
-          </form>
         </div>
       </header>
 
+      {/* Tab Navigation */}
+      <div className="bg-white border-b">
+        <div className="container mx-auto px-4">
+          <nav className="flex space-x-8">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center space-x-2 py-4 border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? "border-orange-600 text-orange-600"
+                    : "border-transparent text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                {tab.icon}
+                <span className="font-medium">{tab.label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      </div>
+
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
+        {/* Section Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {activeTab === "marketplace" && "Campus Marketplace"}
+              {activeTab === "campus-relay" && "Campus Relay"}
+              {activeTab === "lost-found" && "Lost & Found"}
+            </h1>
+            <p className="text-gray-600">{activeTabData?.description}</p>
+          </div>
+          <Link href="/list-item">
+            <Button className="bg-orange-600 hover:bg-orange-700 text-white rounded-full">
+              <Plus className="h-4 w-4 mr-2" />
+              List Item
+            </Button>
+          </Link>
+        </div>
+
+        {/* Search Bar - Optional, can be hidden in mobile */}
+        <form onSubmit={handleSearch} className="flex gap-2 mb-8">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+            <Input
+              placeholder="Search for items... (e.g., 'need iPhone charger urgent')"
+              className="pl-10 pr-12"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={startVoiceSearch}
+              className={`absolute right-3 top-2.5 p-1 rounded-full ${
+                isListening ? "bg-red-100 text-red-600" : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              <Mic className="h-5 w-5" />
+            </button>
+          </div>
+          <Button type="submit" disabled={loading} className="bg-orange-600 hover:bg-orange-700">
+            <Search className="h-4 w-4 mr-2" />
+            Search
+          </Button>
+          <Button type="button" variant="outline">
+            <Filter className="h-4 w-4" />
+          </Button>
+        </form>
+
+        {/* Items Grid */}
         {loading && items.length === 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
               <ItemCardSkeleton key={i} />
             ))}
@@ -351,27 +391,28 @@ export default function HomePage() {
         ) : error && items.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-red-500 mb-4">{error}</p>
-            <Button onClick={handleRetry}>Retry</Button>
+            <Button onClick={handleRetry} className="bg-orange-600 hover:bg-orange-700">Retry</Button>
           </div>
         ) : items.length === 0 && !loading ? (
           <div className="text-center py-20">
+            <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500 mb-4">No items found</p>
             <Link href="/list-item">
-              <Button>Be the first to list an item</Button>
+              <Button className="bg-orange-600 hover:bg-orange-700">Be the first to list an item</Button>
             </Link>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {items.map((item) => (
-                <ItemCard key={item.id} item={item} getPriceRatingColor={getPriceRatingColor} />
+                <MarketplaceItemCard key={item.id} item={item} />
               ))}
             </div>
             {/* Infinite scroll trigger */}
             {hasMore && !isSearchMode.current && (
               <div ref={observerTarget} className="h-10 flex items-center justify-center py-8">
                 {loadingMore && (
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
                 )}
               </div>
             )}
@@ -386,6 +427,63 @@ export default function HomePage() {
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+// New marketplace-style item card component
+function MarketplaceItemCard({ item }: { item: Item }) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+      {/* Item Image */}
+      <Link href={`/item/${item.id}`}>
+        <div className="aspect-[4/3] bg-gray-100 relative overflow-hidden">
+          {item.photo ? (
+            <img
+              src={item.photo}
+              alt={item.name}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400">
+              <Package className="h-16 w-16" />
+            </div>
+          )}
+          {/* Category Badge */}
+          <Badge className="absolute top-3 right-3 bg-white text-gray-800 border-0 shadow-sm">
+            {item.category}
+          </Badge>
+        </div>
+      </Link>
+
+      {/* Item Details */}
+      <div className="p-4">
+        <Link href={`/item/${item.id}`}>
+          <h3 className="font-semibold text-gray-900 text-lg mb-1 hover:text-orange-600 transition-colors line-clamp-1">
+            {item.name}
+          </h3>
+        </Link>
+        <p className="text-2xl font-bold text-orange-600 mb-2">₹{item.price}</p>
+        
+        {/* Location - Use first seller badge if available, otherwise show "On Campus" */}
+        <div className="flex items-center text-gray-500 text-sm mb-4">
+          <MapPin className="h-4 w-4 mr-1" />
+          <span>{item.seller.badges?.[0] || "On Campus"}</span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2">
+          <Link href={`/item/${item.id}`} className="flex-1">
+            <Button className="w-full bg-orange-600 hover:bg-orange-700 text-white rounded-lg">
+              Buy
+            </Button>
+          </Link>
+          <Button variant="outline" size="icon" className="rounded-lg border-gray-200">
+            <Share2 className="h-4 w-4 text-gray-600" />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
