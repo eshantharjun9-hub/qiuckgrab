@@ -64,30 +64,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check for existing pending transaction
-    const existingTransaction = await prisma.transaction.findFirst({
+    // getOrCreateChat: Check for existing transaction with same buyer, seller, and item
+    let transaction = await prisma.transaction.findFirst({
       where: {
-        buyerId: userId,
-        itemId,
-        status: { in: ["REQUESTED", "ACCEPTED", "PAID", "MEETING"] },
-      },
-    });
-
-    if (existingTransaction) {
-      return NextResponse.json(
-        { error: "You already have a pending transaction for this item" },
-        { status: 400 }
-      );
-    }
-
-    // Create transaction
-    const transaction = await prisma.transaction.create({
-      data: {
         buyerId: userId,
         sellerId: item.sellerId,
         itemId,
-        status: "REQUESTED",
-        escrowAmount: item.price,
+        status: { in: ["REQUESTED", "ACCEPTED", "PAID", "MEETING"] },
       },
       include: {
         buyer: {
@@ -111,6 +94,70 @@ export async function POST(request: NextRequest) {
         item: true,
       },
     });
+
+    // If transaction doesn't exist, create a new one
+    if (!transaction) {
+      transaction = await prisma.transaction.create({
+        data: {
+          buyerId: userId,
+          sellerId: item.sellerId,
+          itemId,
+          status: "REQUESTED",
+          escrowAmount: item.price,
+        },
+        include: {
+          buyer: {
+            select: {
+              id: true,
+              name: true,
+              photo: true,
+              verificationStatus: true,
+              trustScore: true,
+            },
+          },
+          seller: {
+            select: {
+              id: true,
+              name: true,
+              photo: true,
+              verificationStatus: true,
+              trustScore: true,
+            },
+          },
+          item: true,
+        },
+      });
+
+      // Create auto-message from buyer
+      await prisma.message.create({
+        data: {
+          transactionId: transaction.id,
+          senderId: userId,
+          content: "Hi! I'm interested in this item. Is it still available?",
+          isAI: false,
+        },
+      });
+    } else {
+      // Transaction already exists - check if auto-message already exists
+      const existingAutoMessage = await prisma.message.findFirst({
+        where: {
+          transactionId: transaction.id,
+          content: "Hi! I'm interested in this item. Is it still available?",
+        },
+      });
+
+      // If no auto-message exists (edge case), create it
+      if (!existingAutoMessage) {
+        await prisma.message.create({
+          data: {
+            transactionId: transaction.id,
+            senderId: userId,
+            content: "Hi! I'm interested in this item. Is it still available?",
+            isAI: false,
+          },
+        });
+      }
+    }
 
     // Item remains AVAILABLE until seller accepts the transaction
     // Status will be updated to RESERVED when seller accepts

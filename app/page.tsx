@@ -44,8 +44,8 @@ export default function LandingPage() {
           </div>
          
           <div className="flex items-center space-x-4">
-            <Link href="/signup">
-              <Button variant="outline" className="rounded-2xl">Sign Up</Button>
+            <Link href="/signin">
+              <Button variant="outline" className="rounded-2xl">Login</Button>
             </Link>
             <Link href="/signup">
               <Button className="bg-orange-600 rounded-2xl">Get Started</Button>

@@ -47,7 +47,9 @@ export const createItemSchema = z.object({
   category: z.string().min(1, "Category is required"),
   description: z.string().optional(),
   price: z.number().positive("Price must be positive"),
-  condition: z.enum(["NEW", "LIKE_NEW", "GOOD", "FAIR", "POOR"]).default("GOOD"),
+  condition: z
+    .enum(["NEW", "LIKE_NEW", "GOOD", "FAIR", "POOR"])
+    .default("GOOD"),
   photo: urlOrDataUrl.optional(),
   photos: z.array(urlOrDataUrl).optional(),
 });
@@ -78,6 +80,22 @@ export const refundTransactionSchema = z.object({
   reason: z.string().optional(),
 });
 
+export const setMeetupSchema = z.object({
+  location: z.string().min(1, "Location is required"),
+});
+
+export const markPaidSchema = z.object({
+  transactionId: z.string().uuid("Invalid transaction ID"),
+});
+
+export const markReceivedSchema = z.object({
+  transactionId: z.string().uuid("Invalid transaction ID"),
+});
+
+export const confirmDeliverySchema = z.object({
+  transactionId: z.string().uuid("Invalid transaction ID"),
+});
+
 // Rating validators
 export const createRatingSchema = z.object({
   userId: z.string().uuid("Invalid user ID"),
@@ -100,7 +118,9 @@ export const searchSchema = z.object({
   minPrice: z.number().optional(),
   maxPrice: z.number().optional(),
   condition: z.enum(["NEW", "LIKE_NEW", "GOOD", "FAIR", "POOR"]).optional(),
-  sort: z.enum(["price_asc", "price_desc", "distance", "rating", "newest"]).optional(),
+  sort: z
+    .enum(["price_asc", "price_desc", "distance", "rating", "newest"])
+    .optional(),
   page: z.number().int().positive().default(1),
   limit: z.number().int().min(1).max(50).default(20),
 });

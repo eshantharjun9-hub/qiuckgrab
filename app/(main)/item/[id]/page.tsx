@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Avatar, AvatarFallback, Textarea } from "@/components/ui";
 import { ArrowLeft, Star, Shield, Clock, MessageCircle, Zap, CheckCircle } from "lucide-react";
@@ -35,6 +36,7 @@ interface ItemDetails {
 
 export default function ItemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const [item, setItem] = useState<ItemDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState(false);
@@ -81,9 +83,9 @@ export default function ItemPage({ params }: { params: Promise<{ id: string }> }
         return;
       }
 
-      alert("Request sent! Wait for seller to accept.");
       // Redirect to chat/transaction page
-      window.location.href = `/chat/${data.transaction.id}`;
+      // If transaction already exists, it will reopen the same chat
+      router.push(`/chat/${data.transaction.id}`);
     } catch (error) {
       alert("Something went wrong");
     } finally {

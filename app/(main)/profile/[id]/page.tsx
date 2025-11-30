@@ -3,8 +3,25 @@
 import { useState, useEffect, use, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle, Badge, Avatar, AvatarFallback, Button } from "@/components/ui";
-import { ArrowLeft, Zap, Star, Shield, Package, LogOut } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Badge,
+  Avatar,
+  AvatarFallback,
+  Button,
+} from "@/components/ui";
+import {
+  ArrowLeft,
+  Zap,
+  Star,
+  Shield,
+  Package,
+  LogOut,
+  MessageCircle,
+} from "lucide-react";
 
 interface UserProfile {
   id: string;
@@ -41,13 +58,20 @@ interface Item {
   availabilityStatus: string;
 }
 
-export default function ProfilePage({ params }: { params: Promise<{ id: string }> }) {
+export default function ProfilePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [items, setItems] = useState<Item[]>([]);
-  const [activeTab, setActiveTab] = useState<"listings" | "reviews">("listings");
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<"listings" | "reviews" | "chats">(
+    "listings"
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
@@ -67,6 +91,33 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     }
   }, [id]);
 
+  // Fetch transactions when viewing own profile and chats tab is active
+  useEffect(() => {
+    if (isOwnProfile && activeTab === "chats") {
+      const fetchTransactions = async () => {
+        try {
+          const token = localStorage.getItem("token");
+          if (!token) return;
+
+          const res = await fetch("/api/transactions", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            setTransactions(data.transactions || []);
+          }
+        } catch (err) {
+          console.error("Failed to fetch transactions:", err);
+        }
+      };
+
+      fetchTransactions();
+    }
+  }, [isOwnProfile, activeTab]);
+
   const handleLogout = () => {
     // Clear user session data from localStorage
     localStorage.removeItem("token");
@@ -78,8 +129,20 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
   const fetchProfileData = useCallback(async () => {
     try {
       setError(null);
+      // Check if viewing own profile by comparing with current user
+      const userStr = localStorage.getItem("user");
+      let isOwn = false;
+      if (userStr) {
+        try {
+          const currentUser = JSON.parse(userStr);
+          isOwn = currentUser && currentUser.id === id;
+        } catch {
+          // Invalid JSON
+        }
+      }
+
       const res = await fetch(`/api/users/${id}`);
-      
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         setError(errorData.error || "Failed to load profile");
@@ -87,10 +150,12 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
         return;
       }
 
-      const data = await res.json();
-      setUser(data.user);
-      setRatings(data.user.ratingsReceived || []);
-      setItems(data.user.items || []);
+      const userData = await res.json();
+      setUser(userData.user);
+      setRatings(userData.user.ratingsReceived || []);
+      setItems(userData.user.items || []);
+
+      // Transactions will be fetched separately when chats tab is active
     } catch (err) {
       setError("Failed to connect to server");
     } finally {
@@ -175,7 +240,9 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
           <CardContent className="pt-6">
             <div className="flex items-start space-x-6">
               <Avatar className="h-24 w-24">
-                <AvatarFallback className="text-3xl">{user.name.charAt(0)}</AvatarFallback>
+                <AvatarFallback className="text-3xl">
+                  {user.name.charAt(0)}
+                </AvatarFallback>
               </Avatar>
               <div className="flex-1">
                 <div className="flex items-center mb-2">
@@ -190,13 +257,17 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                 {user.college && (
                   <p className="text-gray-600 mb-3">{user.college}</p>
                 )}
-                
+
                 {/* Stats */}
                 <div className="flex items-center space-x-6 text-sm">
                   <div className="flex items-center">
                     <Star className="h-5 w-5 fill-yellow-400 text-yellow-400 mr-1" />
-                    <span className="font-semibold">{user.avgRating.toFixed(1)}</span>
-                    <span className="text-gray-500 ml-1">({ratings.length} reviews)</span>
+                    <span className="font-semibold">
+                      {user.avgRating.toFixed(1)}
+                    </span>
+                    <span className="text-gray-500 ml-1">
+                      ({ratings.length} reviews)
+                    </span>
                   </div>
                   <div>
                     <span className="font-semibold">{user.completedDeals}</span>
@@ -212,7 +283,9 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                 {user.badges.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-4">
                     {user.badges.map((badge, i) => (
-                      <Badge key={i} variant="secondary">{badge}</Badge>
+                      <Badge key={i} variant="secondary">
+                        {badge}
+                      </Badge>
                     ))}
                   </div>
                 )}
@@ -239,28 +312,47 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                 <span className="font-medium">20/20</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-green-500 h-2 rounded-full" style={{ width: "100%" }}></div>
+                <div
+                  className="bg-green-500 h-2 rounded-full"
+                  style={{ width: "100%" }}
+                ></div>
               </div>
               <div className="flex justify-between text-sm">
                 <span>Ratings</span>
-                <span className="font-medium">{Math.round((user.avgRating / 5) * 40)}/40</span>
+                <span className="font-medium">
+                  {Math.round((user.avgRating / 5) * 40)}/40
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${(user.avgRating / 5) * 100}%` }}></div>
+                <div
+                  className="bg-blue-500 h-2 rounded-full"
+                  style={{ width: `${(user.avgRating / 5) * 100}%` }}
+                ></div>
               </div>
               <div className="flex justify-between text-sm">
                 <span>Deal Volume</span>
-                <span className="font-medium">{Math.min(20, Math.round((user.completedDeals / 100) * 20))}/20</span>
+                <span className="font-medium">
+                  {Math.min(20, Math.round((user.completedDeals / 100) * 20))}
+                  /20
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${Math.min(100, user.completedDeals)}%` }}></div>
+                <div
+                  className="bg-purple-500 h-2 rounded-full"
+                  style={{ width: `${Math.min(100, user.completedDeals)}%` }}
+                ></div>
               </div>
               <div className="flex justify-between text-sm">
                 <span>Reliability</span>
-                <span className="font-medium">{Math.round((1 - user.cancellationRate) * 20)}/20</span>
+                <span className="font-medium">
+                  {Math.round((1 - user.cancellationRate) * 20)}/20
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-yellow-500 h-2 rounded-full" style={{ width: `${(1 - user.cancellationRate) * 100}%` }}></div>
+                <div
+                  className="bg-yellow-500 h-2 rounded-full"
+                  style={{ width: `${(1 - user.cancellationRate) * 100}%` }}
+                ></div>
               </div>
             </div>
           </CardContent>
@@ -279,6 +371,19 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
             <Package className="h-4 w-4 inline mr-2" />
             Listings ({items.length})
           </button>
+          {isOwnProfile && (
+            <button
+              className={`px-4 py-2 font-medium ${
+                activeTab === "chats"
+                  ? "text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-500"
+              }`}
+              onClick={() => setActiveTab("chats")}
+            >
+              <MessageCircle className="h-4 w-4 inline mr-2" />
+              Chats ({transactions.length})
+            </button>
+          )}
           <button
             className={`px-4 py-2 font-medium ${
               activeTab === "reviews"
@@ -296,7 +401,9 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
         {activeTab === "listings" && (
           <div className="grid gap-4">
             {items.length === 0 ? (
-              <p className="text-center text-gray-500 py-8">No active listings</p>
+              <p className="text-center text-gray-500 py-8">
+                No active listings
+              </p>
             ) : (
               items.map((item) => (
                 <Link key={item.id} href={`/item/${item.id}`}>
@@ -305,7 +412,11 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                       <div className="flex items-center space-x-4">
                         <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center">
                           {item.photo ? (
-                            <img src={item.photo} alt={item.name} className="w-full h-full object-cover rounded-2xl" />
+                            <img
+                              src={item.photo}
+                              alt={item.name}
+                              className="w-full h-full object-cover rounded-2xl"
+                            />
                           ) : (
                             <Package className="h-8 w-8 text-gray-400" />
                           )}
@@ -337,6 +448,204 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
           </div>
         )}
 
+        {activeTab === "chats" && isOwnProfile && (
+          <div className="space-y-6">
+            {transactions.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">No active chats</p>
+            ) : (
+              (() => {
+                const activeStatuses = [
+                  "REQUESTED",
+                  "ACCEPTED",
+                  "MEETING",
+                  "PAID",
+                ];
+                const activeTransactions = transactions.filter((t) =>
+                  activeStatuses.includes(t.status)
+                );
+                const completedTransactions = transactions.filter(
+                  (t) => t.status === "COMPLETED"
+                );
+
+                return (
+                  <>
+                    {activeTransactions.length > 0 && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-800">
+                          Active Chats ({activeTransactions.length})
+                        </h3>
+                        {activeTransactions.map((transaction) => {
+                          const otherParty = transaction.otherParty;
+                          const role = transaction.role;
+                          let hasUnread = false;
+                          try {
+                            const userStr = localStorage.getItem("user");
+                            if (userStr) {
+                              const currentUser = JSON.parse(userStr);
+                              hasUnread =
+                                transaction.latestMessage &&
+                                transaction.latestMessage.senderId !== currentUser?.id;
+                            }
+                          } catch {
+                            // Ignore parse errors
+                          }
+
+                          return (
+                            <Link
+                              key={transaction.id}
+                              href={`/chat/${transaction.id}`}
+                            >
+                              <Card className="hover:shadow-md transition-shadow">
+                                <CardContent className="p-4">
+                                  <div className="flex items-start space-x-4">
+                                    <div className="relative">
+                                      <Avatar>
+                                        <AvatarFallback>
+                                          {otherParty.name.charAt(0)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      {hasUnread && (
+                                        <div className="absolute -top-1 -right-1 h-3 w-3 bg-blue-600 rounded-full border-2 border-white"></div>
+                                      )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span
+                                          className={`font-medium ${
+                                            hasUnread ? "font-semibold" : ""
+                                          }`}
+                                        >
+                                          {otherParty.name}
+                                        </span>
+                                        <Badge
+                                          variant={
+                                            transaction.status === "PAID"
+                                              ? "default"
+                                              : "secondary"
+                                          }
+                                          className="ml-2"
+                                        >
+                                          {transaction.status}
+                                        </Badge>
+                                      </div>
+                                      <div className="flex items-center space-x-2 text-sm text-gray-500 mb-2">
+                                        <span
+                                          className={
+                                            role === "buyer"
+                                              ? "text-blue-600"
+                                              : "text-green-600"
+                                          }
+                                        >
+                                          {role === "buyer" ? "Buying" : "Selling"}
+                                        </span>
+                                        <span>•</span>
+                                        <span className="font-medium">
+                                          {transaction.item.name}
+                                        </span>
+                                        <span>•</span>
+                                        <span className="text-blue-600 font-semibold">
+                                          ₹{transaction.escrowAmount.toFixed(2)}
+                                        </span>
+                                      </div>
+                                      {transaction.latestMessage && (
+                                        <p
+                                          className={`text-sm truncate ${
+                                            hasUnread
+                                              ? "text-gray-900 font-medium"
+                                              : "text-gray-600"
+                                          }`}
+                                        >
+                                          {transaction.latestMessage.senderName}:{" "}
+                                          {transaction.latestMessage.content}
+                                        </p>
+                                      )}
+                                      {transaction.meetupLocation && (
+                                        <div className="flex items-center text-xs text-gray-500 mt-2">
+                                          <MessageCircle className="h-3 w-3 mr-1" />
+                                          Meet at: {transaction.meetupLocation}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {completedTransactions.length > 0 && (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-800">
+                          Completed ({completedTransactions.length})
+                        </h3>
+                        {completedTransactions.map((transaction) => {
+                          const otherParty = transaction.otherParty;
+                          const role = transaction.role;
+
+                          return (
+                            <Link
+                              key={transaction.id}
+                              href={`/chat/${transaction.id}`}
+                            >
+                              <Card className="hover:shadow-md transition-shadow opacity-75">
+                                <CardContent className="p-4">
+                                  <div className="flex items-start space-x-4">
+                                    <Avatar>
+                                      <AvatarFallback>
+                                        {otherParty.name.charAt(0)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="font-medium">
+                                          {otherParty.name}
+                                        </span>
+                                        <Badge variant="success" className="ml-2">
+                                          {transaction.status}
+                                        </Badge>
+                                      </div>
+                                      <div className="flex items-center space-x-2 text-sm text-gray-500 mb-2">
+                                        <span
+                                          className={
+                                            role === "buyer"
+                                              ? "text-blue-600"
+                                              : "text-green-600"
+                                          }
+                                        >
+                                          {role === "buyer" ? "Buying" : "Selling"}
+                                        </span>
+                                        <span>•</span>
+                                        <span className="font-medium">
+                                          {transaction.item.name}
+                                        </span>
+                                        <span>•</span>
+                                        <span className="text-blue-600 font-semibold">
+                                          ₹{transaction.escrowAmount.toFixed(2)}
+                                        </span>
+                                      </div>
+                                      {transaction.latestMessage && (
+                                        <p className="text-sm text-gray-600 truncate">
+                                          {transaction.latestMessage.senderName}:{" "}
+                                          {transaction.latestMessage.content}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })()
+            )}
+          </div>
+        )}
+
         {activeTab === "reviews" && (
           <div className="space-y-4">
             {ratings.length === 0 ? (
@@ -347,11 +656,15 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                   <CardContent className="p-4">
                     <div className="flex items-start space-x-4">
                       <Avatar>
-                        <AvatarFallback>{rating.fromUser.name.charAt(0)}</AvatarFallback>
+                        <AvatarFallback>
+                          {rating.fromUser.name.charAt(0)}
+                        </AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium">{rating.fromUser.name}</span>
+                          <span className="font-medium">
+                            {rating.fromUser.name}
+                          </span>
                           <span className="text-sm text-gray-500">
                             {new Date(rating.createdAt).toLocaleDateString()}
                           </span>
@@ -369,7 +682,9 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                           ))}
                         </div>
                         {rating.comment && (
-                          <p className="text-gray-600 text-sm">{rating.comment}</p>
+                          <p className="text-gray-600 text-sm">
+                            {rating.comment}
+                          </p>
                         )}
                       </div>
                     </div>

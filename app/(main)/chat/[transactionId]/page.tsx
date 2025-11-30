@@ -2,8 +2,22 @@
 
 import { useState, useEffect, useRef, use, useCallback } from "react";
 import Link from "next/link";
-import { Button, Input, Avatar, AvatarFallback, Badge } from "@/components/ui";
-import { ArrowLeft, Send, IndianRupee, CheckCircle, MapPin } from "lucide-react";
+import {
+  Button,
+  Input,
+  Avatar,
+  AvatarFallback,
+  Badge,
+  MeetupModal,
+} from "@/components/ui";
+import {
+  ArrowLeft,
+  Send,
+  IndianRupee,
+  CheckCircle,
+  MapPin,
+  HandCoins,
+} from "lucide-react";
 
 interface Message {
   id: string;
@@ -44,13 +58,22 @@ interface AuthUser {
   email: string;
 }
 
-export default function ChatPage({ params }: { params: Promise<{ transactionId: string }> }) {
+export default function ChatPage({
+  params,
+}: {
+  params: Promise<{ transactionId: string }>;
+}) {
   const { transactionId } = use(params);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [transaction, setTransaction] = useState<Transaction | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [markingPaid, setMarkingPaid] = useState(false);
+  const [markingReceived, setMarkingReceived] = useState(false);
+  const [confirmingDelivery, setConfirmingDelivery] = useState(false);
+  const [showMeetupModal, setShowMeetupModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -102,10 +125,12 @@ export default function ChatPage({ params }: { params: Promise<{ transactionId: 
       setTransaction(data.transaction);
       // Load messages from transaction
       if (data.transaction.messages) {
-        setMessages(data.transaction.messages.map((msg: Message) => ({
-          ...msg,
-          isAI: msg.isAI || false,
-        })));
+        setMessages(
+          data.transaction.messages.map((msg: Message) => ({
+            ...msg,
+            isAI: msg.isAI || false,
+          }))
+        );
       }
       setLoading(false);
     } catch (err) {
@@ -122,6 +147,69 @@ export default function ChatPage({ params }: { params: Promise<{ transactionId: 
     // socketClient.joinTransaction(transactionId);
     // socketClient.onMessage((data) => setMessages(prev => [...prev, data.message]));
   }, [fetchTransaction]);
+
+  // Poll for new messages every 2 seconds when page is visible
+  useEffect(() => {
+    if (loading || !transaction) return;
+
+    let intervalId: NodeJS.Timeout;
+    let isPageVisible = true;
+
+    const handleVisibilityChange = () => {
+      isPageVisible = !document.hidden;
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    const pollMessages = async () => {
+      if (!isPageVisible) return;
+
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+
+        const res = await fetch(`/api/transactions/${transactionId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (data.transaction?.messages) {
+          const newMessages = data.transaction.messages.map((msg: Message) => ({
+            ...msg,
+            isAI: msg.isAI || false,
+          }));
+
+          // Only update if message count changed
+          setMessages((prev) => {
+            if (prev.length !== newMessages.length) {
+              return newMessages;
+            }
+            // Check if any message content changed (for edits)
+            const hasChanges = prev.some(
+              (oldMsg, idx) =>
+                oldMsg.id !== newMessages[idx]?.id ||
+                oldMsg.content !== newMessages[idx]?.content
+            );
+            return hasChanges ? newMessages : prev;
+          });
+        }
+      } catch (err) {
+        // Silently fail polling errors
+      }
+    };
+
+    // Poll every 2 seconds
+    intervalId = setInterval(pollMessages, 2000);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [transactionId, loading, transaction]);
 
   useEffect(() => {
     scrollToBottom();
@@ -144,10 +232,189 @@ export default function ChatPage({ params }: { params: Promise<{ transactionId: 
     };
     setMessages((prev) => [...prev, tempMessage]);
 
-    // In real app, send via Socket.io
-    // socketClient.sendMessage(transactionId, messageContent);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
 
-    setSending(false);
+      const res = await fetch(`/api/transactions/${transactionId}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: messageContent }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // Remove optimistic message on error
+        setMessages((prev) => prev.filter((m) => m.id !== tempMessage.id));
+        throw new Error(data.error || "Failed to send message");
+      }
+
+      // Replace temp message with actual message from server
+      setMessages((prev) => {
+        const filtered = prev.filter((m) => m.id !== tempMessage.id);
+        return [
+          ...filtered,
+          {
+            id: data.message.id,
+            senderId: data.message.senderId,
+            content: data.message.content,
+            createdAt: data.message.createdAt,
+            isAI: data.message.isAI || false,
+          },
+        ];
+      });
+    } catch (err) {
+      // Remove optimistic message on error
+      setMessages((prev) => prev.filter((m) => m.id !== tempMessage.id));
+      alert(err instanceof Error ? err.message : "Failed to send message");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleAccept = async () => {
+    if (!currentUser) return;
+
+    setAccepting(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+
+      const res = await fetch("/api/transactions/accept", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ transactionId }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to accept transaction");
+      }
+
+      // Refresh transaction data
+      await fetchTransaction();
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : "Failed to accept transaction"
+      );
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const handleSetMeetup = async (location: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+
+      const res = await fetch(`/api/transactions/${transactionId}/meetup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ location }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to set meetup location");
+      }
+
+      // Refresh transaction data
+      await fetchTransaction();
+    } catch (err) {
+      throw err; // Re-throw to be handled by modal
+    }
+  };
+
+  const handleMarkPaid = async () => {
+    if (!currentUser) return;
+
+    setMarkingPaid(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+
+      const res = await fetch(`/api/transactions/${transactionId}/mark-paid`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ transactionId }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to mark payment");
+      }
+
+      // Refresh transaction data
+      await fetchTransaction();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to mark payment");
+    } finally {
+      setMarkingPaid(false);
+    }
+  };
+
+  const handleMarkReceived = async () => {
+    if (!currentUser) return;
+
+    setMarkingReceived(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+
+      const res = await fetch(
+        `/api/transactions/${transactionId}/mark-received`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ transactionId }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to mark item as received");
+      }
+
+      // Refresh transaction data
+      await fetchTransaction();
+      alert("Item marked as received! Transaction completed.");
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : "Failed to mark item as received"
+      );
+    } finally {
+      setMarkingReceived(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -157,7 +424,9 @@ export default function ChatPage({ params }: { params: Promise<{ transactionId: 
       case "ACCEPTED":
         return <Badge variant="success">Accepted</Badge>;
       case "PAID":
-        return <Badge className="bg-green-500 text-white">Payment Secured</Badge>;
+        return (
+          <Badge className="bg-green-500 text-white">Payment Secured</Badge>
+        );
       case "MEETING":
         return <Badge className="bg-yellow-500 text-black">Meeting</Badge>;
       case "COMPLETED":
@@ -187,7 +456,11 @@ export default function ChatPage({ params }: { params: Promise<{ transactionId: 
   }
 
   const currentUserId = currentUser?.id || "";
-  const otherUser = currentUserId === transaction.buyer.id ? transaction.seller : transaction.buyer;
+  const otherUser =
+    currentUserId === transaction.buyer.id
+      ? transaction.seller
+      : transaction.buyer;
+  const isSeller = currentUserId === transaction.seller.id;
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -216,7 +489,9 @@ export default function ChatPage({ params }: { params: Promise<{ transactionId: 
           <div className="flex items-center space-x-4">
             <div className="flex items-center text-sm">
               <IndianRupee className="h-4 w-4 mr-1 text-blue-600" />
-              <span className="font-medium">₹{transaction.escrowAmount.toFixed(2)}</span>
+              <span className="font-medium">
+                ₹{transaction.escrowAmount.toFixed(2)}
+              </span>
             </div>
             {transaction.meetupLocation && (
               <div className="flex items-center text-sm">
@@ -225,19 +500,55 @@ export default function ChatPage({ params }: { params: Promise<{ transactionId: 
               </div>
             )}
           </div>
-          <div className="flex space-x-2">
-            {transaction.status === "ACCEPTED" && (
-              <Link href={`/meetup/${transactionId}`}>
-                <Button size="sm">
-                  <IndianRupee className="h-4 w-4 mr-1" />
-                  Pay & Meet
-                </Button>
-              </Link>
-            )}
-            {transaction.status === "PAID" && (
-              <Button size="sm" variant="success">
+          <div className="flex space-x-2 flex-wrap gap-2">
+            {transaction.status === "REQUESTED" && isSeller && (
+              <Button
+                size="sm"
+                variant="success"
+                onClick={handleAccept}
+                disabled={accepting}
+              >
                 <CheckCircle className="h-4 w-4 mr-1" />
-                Confirm Receipt
+                {accepting ? "Accepting..." : "Accept Request"}
+              </Button>
+            )}
+            {(transaction.status === "ACCEPTED" ||
+              transaction.status === "REQUESTED") && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowMeetupModal(true)}
+              >
+                <MapPin className="h-4 w-4 mr-1" />
+                {transaction.meetupLocation ? "Change Meetup" : "Meet"}
+              </Button>
+            )}
+            {transaction.status === "MEETING" && !isSeller && (
+              <Button size="sm" onClick={handleMarkPaid} disabled={markingPaid}>
+                <HandCoins className="h-4 w-4 mr-1" />
+                {markingPaid ? "Processing..." : "Buy & Pay Physically"}
+              </Button>
+            )}
+            {transaction.status === "PAID" && !isSeller && (
+              <Button
+                size="sm"
+                variant="success"
+                onClick={handleMarkReceived}
+                disabled={markingReceived}
+              >
+                <CheckCircle className="h-4 w-4 mr-1" />
+                {markingReceived ? "Processing..." : "Item Received"}
+              </Button>
+            )}
+            {(transaction.status === "PAID" || transaction.status === "MEETING") && isSeller && (
+              <Button
+                size="sm"
+                variant="success"
+                onClick={handleConfirmDelivery}
+                disabled={confirmingDelivery}
+              >
+                <CheckCircle className="h-4 w-4 mr-1" />
+                {confirmingDelivery ? "Processing..." : "Confirm Delivery"}
               </Button>
             )}
           </div>
@@ -253,7 +564,13 @@ export default function ChatPage({ params }: { params: Promise<{ transactionId: 
           return (
             <div
               key={message.id}
-              className={`flex ${isAI ? "justify-center" : isOwnMessage ? "justify-end" : "justify-start"}`}
+              className={`flex ${
+                isAI
+                  ? "justify-center"
+                  : isOwnMessage
+                  ? "justify-end"
+                  : "justify-start"
+              }`}
             >
               <div
                 className={`max-w-[80%] rounded-2xl p-3 ${
@@ -264,7 +581,11 @@ export default function ChatPage({ params }: { params: Promise<{ transactionId: 
                     : "bg-white border"
                 }`}
               >
-                <p className={isOwnMessage && !isAI ? "text-white" : "text-gray-800"}>
+                <p
+                  className={
+                    isOwnMessage && !isAI ? "text-white" : "text-gray-800"
+                  }
+                >
                   {message.content}
                 </p>
                 <p
@@ -298,6 +619,14 @@ export default function ChatPage({ params }: { params: Promise<{ transactionId: 
           </Button>
         </div>
       </form>
+
+      {/* Meetup Modal */}
+      <MeetupModal
+        isOpen={showMeetupModal}
+        onClose={() => setShowMeetupModal(false)}
+        onSelect={handleSetMeetup}
+        transactionId={transactionId}
+      />
     </div>
   );
 }
