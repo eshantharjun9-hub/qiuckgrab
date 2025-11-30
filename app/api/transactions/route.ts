@@ -23,10 +23,11 @@ export async function GET(request: NextRequest) {
       where.status = status.toUpperCase();
     }
 
-    // Get transactions with related data
+    // Get transactions with related data (limit to reduce load)
     const transactions = await prisma.transaction.findMany({
       where,
       orderBy: { updatedAt: "desc" },
+      take: 100, // Limit to 100 most recent transactions
       include: {
         buyer: {
           select: {
@@ -99,6 +100,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       transactions: formattedTransactions,
       count: formattedTransactions.length,
+    }, {
+      headers: {
+        "Cache-Control": "private, no-cache, no-store, must-revalidate",
+      },
     });
   } catch (error) {
     console.error("Error fetching transactions:", error);

@@ -9,7 +9,10 @@ import {
   AvatarFallback,
   Badge,
   MeetupModal,
+  ApprovalNotificationModal,
 } from "@/components/ui";
+import { showToast } from "@/components/ui/toast";
+import { messageNotifier } from "@/lib/services/message-notifier";
 import {
   ArrowLeft,
   Send,
@@ -38,6 +41,8 @@ interface Transaction {
     name: string;
     price: number;
     photo: string | null;
+    condition?: string;
+    category?: string;
   };
   buyer: {
     id: string;
@@ -74,9 +79,12 @@ export default function ChatPage({
   const [markingReceived, setMarkingReceived] = useState(false);
   const [confirmingDelivery, setConfirmingDelivery] = useState(false);
   const [showMeetupModal, setShowMeetupModal] = useState(false);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastMessageIdRef = useRef<string | null>(null);
+  const lastMessageTimestampRef = useRef<string | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -123,14 +131,24 @@ export default function ChatPage({
       }
 
       setTransaction(data.transaction);
-      // Load messages from transaction
-      if (data.transaction.messages) {
-        setMessages(
-          data.transaction.messages.map((msg: Message) => ({
+      // Load messages from transaction (reverse to show oldest first)
+      if (data.transaction.messages && data.transaction.messages.length > 0) {
+        const loadedMessages = data.transaction.messages
+          .map((msg: Message) => ({
             ...msg,
             isAI: msg.isAI || false,
           }))
-        );
+          .reverse(); // Reverse to show oldest first (normal chat order)
+        setMessages(loadedMessages);
+        // Update last message refs
+        const lastMsg = loadedMessages[loadedMessages.length - 1];
+        lastMessageIdRef.current = lastMsg.id;
+        lastMessageTimestampRef.current = lastMsg.createdAt;
+      } else {
+        // No messages yet - clear refs and start fresh
+        setMessages([]);
+        lastMessageIdRef.current = null;
+        lastMessageTimestampRef.current = null;
       }
       setLoading(false);
     } catch (err) {
@@ -142,74 +160,117 @@ export default function ChatPage({
   useEffect(() => {
     fetchTransaction();
 
-    // In real app, connect to Socket.io here
-    // socketClient.connect();
-    // socketClient.joinTransaction(transactionId);
-    // socketClient.onMessage((data) => setMessages(prev => [...prev, data.message]));
-  }, [fetchTransaction]);
+    // Register this transaction as active so global notifier doesn't poll it
+    if (currentUser) {
+      messageNotifier.setActiveTransaction(transactionId);
+    }
 
-  // Poll for new messages every 2 seconds when page is visible
+    return () => {
+      messageNotifier.removeActiveTransaction(transactionId);
+    };
+  }, [fetchTransaction, transactionId, currentUser]);
+
+  // Poll for new messages every 3 seconds (optimized and reliable)
   useEffect(() => {
-    if (loading || !transaction) return;
+    // Wait for transaction and user to be loaded
+    if (loading || !transaction || !currentUser) return;
 
     let intervalId: NodeJS.Timeout;
-    let isPageVisible = true;
+    let isPolling = false;
 
-    const handleVisibilityChange = () => {
-      isPageVisible = !document.hidden;
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    const pollMessages = async () => {
-      if (!isPageVisible) return;
-
+    const pollNewMessages = async () => {
+      if (isPolling) return;
+      
+      isPolling = true;
       try {
         const token = localStorage.getItem("token");
-        if (!token) return;
+        if (!token) {
+          isPolling = false;
+          return;
+        }
 
-        const res = await fetch(`/api/transactions/${transactionId}`, {
+        // Use ref to get the last message timestamp (avoids dependency on messages)
+        const lastTimestamp = lastMessageTimestampRef.current;
+        
+        // Always fetch new messages - even if no timestamp (for initial load)
+        // Add a small buffer (2 seconds) to ensure we don't miss messages due to timing
+        const timestampParam = lastTimestamp 
+          ? `?after=${encodeURIComponent(new Date(new Date(lastTimestamp).getTime() - 2000).toISOString())}`
+          : "";
+        const url = `/api/transactions/${transactionId}/messages/new${timestampParam}`;
+
+        const res = await fetch(url, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
+          cache: "no-cache",
         });
 
-        if (!res.ok) return;
+        if (!res.ok) {
+          isPolling = false;
+          return;
+        }
 
         const data = await res.json();
-        if (data.transaction?.messages) {
-          const newMessages = data.transaction.messages.map((msg: Message) => ({
+        if (data.messages && data.messages.length > 0) {
+          const newMessages = data.messages.map((msg: Message) => ({
             ...msg,
             isAI: msg.isAI || false,
           }));
 
-          // Only update if message count changed
+          // Append only new messages and update refs
           setMessages((prev) => {
-            if (prev.length !== newMessages.length) {
-              return newMessages;
+            const existingIds = new Set(prev.map(m => m.id));
+            const trulyNew = newMessages.filter(m => !existingIds.has(m.id));
+            
+            if (trulyNew.length > 0) {
+              const lastNew = trulyNew[trulyNew.length - 1];
+              // Update refs immediately
+              lastMessageIdRef.current = lastNew.id;
+              lastMessageTimestampRef.current = lastNew.createdAt;
+              
+              // Show notification for new messages from others
+              if (currentUser && transaction) {
+                const messagesFromOthers = trulyNew.filter(m => 
+                  m.senderId !== currentUser.id && !m.isAI
+                );
+                
+                if (messagesFromOthers.length > 0) {
+                  const otherUserMessage = messagesFromOthers[0];
+                  const otherUser = otherUserMessage.senderId === transaction.buyer.id 
+                    ? transaction.buyer 
+                    : transaction.seller;
+                  
+                  // Show notification for new messages from others
+                  showToast({
+                    type: "message",
+                    title: `New message from ${otherUser?.name || "User"}`,
+                    message: otherUserMessage.content.substring(0, 50) + (otherUserMessage.content.length > 50 ? "..." : ""),
+                    actionUrl: `/chat/${transactionId}`,
+                    actionLabel: "View Chat",
+                    duration: 5000,
+                  });
+                }
+              }
             }
-            // Check if any message content changed (for edits)
-            const hasChanges = prev.some(
-              (oldMsg, idx) =>
-                oldMsg.id !== newMessages[idx]?.id ||
-                oldMsg.content !== newMessages[idx]?.content
-            );
-            return hasChanges ? newMessages : prev;
+            return [...prev, ...trulyNew];
           });
         }
       } catch (err) {
-        // Silently fail polling errors
+        console.error("Error polling messages:", err);
+      } finally {
+        isPolling = false;
       }
     };
 
-    // Poll every 2 seconds
-    intervalId = setInterval(pollMessages, 2000);
+    // Start polling immediately, then every 3 seconds
+    pollNewMessages();
+    intervalId = setInterval(pollNewMessages, 3000);
 
     return () => {
       clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [transactionId, loading, transaction]);
+  }, [transactionId, loading, transaction, currentUser]);
 
   useEffect(() => {
     scrollToBottom();
@@ -256,19 +317,74 @@ export default function ChatPage({
       }
 
       // Replace temp message with actual message from server
+      const actualMessage = {
+        id: data.message.id,
+        senderId: data.message.senderId,
+        content: data.message.content,
+        createdAt: data.message.createdAt,
+        isAI: data.message.isAI || false,
+      };
+
       setMessages((prev) => {
         const filtered = prev.filter((m) => m.id !== tempMessage.id);
-        return [
-          ...filtered,
-          {
-            id: data.message.id,
-            senderId: data.message.senderId,
-            content: data.message.content,
-            createdAt: data.message.createdAt,
-            isAI: data.message.isAI || false,
-          },
-        ];
+        const updated = [...filtered, actualMessage];
+        
+        // Update last message refs immediately
+        lastMessageIdRef.current = actualMessage.id;
+        lastMessageTimestampRef.current = actualMessage.createdAt;
+        
+        return updated;
       });
+
+      // Immediately trigger a poll to fetch any other new messages
+      // This ensures both users see messages quickly
+      setTimeout(() => {
+        if (transaction) {
+          // Trigger a manual poll
+          const pollManually = async () => {
+            try {
+              const token = localStorage.getItem("token");
+              if (!token) return;
+
+              const lastTimestamp = lastMessageTimestampRef.current;
+              const url = lastTimestamp
+                ? `/api/transactions/${transactionId}/messages/new?after=${encodeURIComponent(lastTimestamp)}`
+                : `/api/transactions/${transactionId}/messages/new`;
+
+              const res = await fetch(url, {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+                cache: "no-cache",
+              });
+
+              if (res.ok) {
+                const pollData = await res.json();
+                if (pollData.messages && pollData.messages.length > 0) {
+                  const newMessages = pollData.messages.map((msg: Message) => ({
+                    ...msg,
+                    isAI: msg.isAI || false,
+                  }));
+
+                  setMessages((prev) => {
+                    const existingIds = new Set(prev.map((m) => m.id));
+                    const trulyNew = newMessages.filter((m) => !existingIds.has(m.id));
+                    if (trulyNew.length > 0) {
+                      const lastNew = trulyNew[trulyNew.length - 1];
+                      lastMessageIdRef.current = lastNew.id;
+                      lastMessageTimestampRef.current = lastNew.createdAt;
+                    }
+                    return [...prev, ...trulyNew];
+                  });
+                }
+              }
+            } catch (err) {
+              console.error("Error in manual poll:", err);
+            }
+          };
+          pollManually();
+        }
+      }, 1000);
     } catch (err) {
       // Remove optimistic message on error
       setMessages((prev) => prev.filter((m) => m.id !== tempMessage.id));
@@ -305,6 +421,9 @@ export default function ChatPage({
 
       // Refresh transaction data
       await fetchTransaction();
+      
+      // Show approval notification modal
+      setShowApprovalModal(true);
     } catch (err) {
       alert(
         err instanceof Error ? err.message : "Failed to accept transaction"
@@ -627,6 +746,23 @@ export default function ChatPage({
         onSelect={handleSetMeetup}
         transactionId={transactionId}
       />
+
+      {/* Approval Notification Modal */}
+      {transaction && currentUser && (
+        <ApprovalNotificationModal
+          isOpen={showApprovalModal}
+          onClose={() => setShowApprovalModal(false)}
+          item={{
+            id: transaction.item.id,
+            name: transaction.item.name,
+            price: transaction.item.price,
+            photo: transaction.item.photo,
+            condition: transaction.item.condition || "GOOD",
+            category: transaction.item.category || "General",
+          }}
+          userId={currentUser.id}
+        />
+      )}
     </div>
   );
 }

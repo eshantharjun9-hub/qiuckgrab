@@ -49,6 +49,21 @@ export default function HomePage() {
     }
   }, []);
 
+  // Start global message notifier when user is logged in
+  useEffect(() => {
+    if (currentUser?.id) {
+      import("@/lib/services/message-notifier").then(({ messageNotifier }) => {
+        messageNotifier.start(currentUser.id);
+      });
+
+      return () => {
+        import("@/lib/services/message-notifier").then(({ messageNotifier }) => {
+          messageNotifier.stop();
+        });
+      };
+    }
+  }, [currentUser?.id]);
+
   // Load cached items from sessionStorage on mount
   useEffect(() => {
     try {

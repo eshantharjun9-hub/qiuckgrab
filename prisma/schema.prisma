@@ -148,6 +148,9 @@ model Transaction {
   @@index([sellerId])
   @@index([itemId])
   @@index([status])
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([updatedAt])
 }
 
 model Rating {
@@ -183,6 +186,8 @@ model Message {
 
   @@index([transactionId])
   @@index([senderId])
+  @@index([transactionId, createdAt])
+  @@index([createdAt])
 }
 
 model Dispute {

@@ -59,8 +59,13 @@ export async function GET(
         ...item,
         priceExplanation,
       },
+    }, {
+      headers: {
+        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+      },
     });
   } catch (error) {
+    console.error("Error fetching item:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

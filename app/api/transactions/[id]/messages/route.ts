@@ -60,24 +60,31 @@ export async function POST(
       );
     }
 
-    // Create message
-    const message = await prisma.message.create({
-      data: {
-        transactionId,
-        senderId: userId,
-        content,
-        isAI: false,
-      },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            name: true,
-            photo: true,
+    // Create message and update transaction updatedAt simultaneously
+    const [message] = await Promise.all([
+      prisma.message.create({
+        data: {
+          transactionId,
+          senderId: userId,
+          content,
+          isAI: false,
+        },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              name: true,
+              photo: true,
+            },
           },
         },
-      },
-    });
+      }),
+      // Update transaction updatedAt so it appears in profile chats
+      prisma.transaction.update({
+        where: { id: transactionId },
+        data: { updatedAt: new Date() },
+      }),
+    ]);
 
     // TODO: Emit Socket.io event for real-time message delivery
     // socketClient.emit('new_message', { transactionId, message });

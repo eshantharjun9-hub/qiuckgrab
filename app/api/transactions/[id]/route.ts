@@ -50,7 +50,8 @@ export async function GET(
           },
         },
         messages: {
-          orderBy: { createdAt: "asc" },
+          orderBy: { createdAt: "desc" },
+          take: 50, // Only load last 50 messages initially (most recent)
           include: {
             sender: {
               select: {
@@ -79,8 +80,13 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ transaction });
+    return NextResponse.json({ transaction }, {
+      headers: {
+        "Cache-Control": "private, no-cache, no-store, must-revalidate",
+      },
+    });
   } catch (error) {
+    console.error("Error fetching transaction:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -91,6 +91,36 @@ export default function ProfilePage({
     }
   }, [id]);
 
+  // Start message notifier if viewing own profile (for notifications)
+  useEffect(() => {
+    if (isOwnProfile) {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        try {
+          const currentUser = JSON.parse(userStr);
+          if (currentUser?.id) {
+            import("@/lib/services/message-notifier").then(({ messageNotifier }) => {
+              messageNotifier.start(currentUser.id);
+            });
+          }
+        } catch {
+          // Ignore
+        }
+      }
+    }
+  }, [isOwnProfile]);
+
+  // Handle tab query parameter
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      if (tabParam === "chats" && isOwnProfile) {
+        setActiveTab("chats");
+      }
+    }
+  }, [isOwnProfile]);
+
   // Fetch transactions when viewing own profile and chats tab is active
   useEffect(() => {
     if (isOwnProfile && activeTab === "chats") {
@@ -103,6 +133,7 @@ export default function ProfilePage({
             headers: {
               Authorization: `Bearer ${token}`,
             },
+            cache: "no-cache",
           });
 
           if (res.ok) {
@@ -114,7 +145,15 @@ export default function ProfilePage({
         }
       };
 
+      // Fetch immediately
       fetchTransactions();
+
+      // Then poll every 5 seconds to refresh the list
+      const intervalId = setInterval(fetchTransactions, 5000);
+
+      return () => {
+        clearInterval(intervalId);
+      };
     }
   }, [isOwnProfile, activeTab]);
 
